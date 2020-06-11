@@ -173,10 +173,12 @@ class MatchedFilter(object):
                                 activation = np.zeros((subfilter_rows,subfilter_cols,self.n_colors))
                                 for sub_row in range(subfilter_rows):
                                     for color in range(self.n_colors):
-                                        activation += np.dot(subfilter[sub_row,:,color], test_image[row+sub_row,x0:x1,color])
+                                        activation[sub_row,:,color] += np.dot(subfilter[sub_row,:,color], test_image[row+sub_row,x0:x1,color])
                                 # TODO: store activation somewhere? probably in a list
                                 activation /= (averaging_factor)
-                                activations.append(activation)
+                                filename = 'test-{0}-{1}-{2}-{3}.txt'.format(class_id,subfilter_num,row,col)
+                                # np.savetxt(filename,activation)
+                                activations.append((activation, x0, x1, y0, y1))
 
 
 
@@ -186,17 +188,27 @@ class MatchedFilter(object):
                 else:
                     print("Subfilter rows too small!")
 
-            test = np.uint8(activations[0])
-            # print(test)
-            image = Image.fromarray(test,'HSV')
-            image.show()
+            # test = np.uint8(activations[0])
+            # # print(test)
+            # image = Image.fromarray(test,'HSV')
+            # image.show()
             self.class_activations.append(activations)
 
         for class_id in range(self.n_classes):
             activations = self.class_activations[class_id]
             for i in range(len(activations)):
-                print("Class {0} activation with value {1}\n".format(self.classes[class_id], np.mean(activations[i])))
+                print("Class {0} activation with value {1}\n".format(self.classes[class_id], np.mean(activations[i][0])))
 
+
+            # Well this doesnt work because activations looks broke yo
+            values = [val[0] for val in activations]
+            values_array = np.asarray(values)
+            print(values_array.shape)
+            #print(values_array)
+            values_array_averaged = np.mean(values_array,axis=2)
+            print(values_array_averaged.shape)
+            index = np.argmax(values_array_averaged)
+            print("Max:", activations[index])
 
     # def apply_filters(self):
     #     '''
