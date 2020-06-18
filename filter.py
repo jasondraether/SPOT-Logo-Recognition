@@ -128,7 +128,7 @@ class MatchedFilter(object):
                 img.save(os.path.join(debug_directory, 'gradient_y-{0}.jpg'.format(datum)))
 
     def create_filters(self):
-        
+        pass 
 
 def main():
     obj = MatchedFilter(data_directory='filters/')
