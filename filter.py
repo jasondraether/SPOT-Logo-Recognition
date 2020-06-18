@@ -3,6 +3,9 @@ import os
 from PIL import Image
 from scipy import signal
 
+debug_directory = 'debug_images/'
+debug = 1
+
 class MatchedFilter(object):
 
     '''
@@ -65,8 +68,9 @@ class MatchedFilter(object):
     '''
     Apply Gaussian kernel to image
     '''
-    def smooth_image(self, kernel_size=5, std_dev=1):
+    def smooth_image(self, std_dev=1.0): # Can play around with different values
         self.data_gaussian = np.zeros((self.n_image_rows,self.n_image_cols,self.n_colors,self.n_data),dtype='float64')
+        kernel_size = np.ceil(6.0*std_dev) # Based off wikipedia, kernel should be ceil(6.0*std_dev) each dimension
         gaussian_kernel = signal.gaussian(kernel_size,std_dev)
         gaussian_kernel_2d = np.outer(gaussian_kernel,gaussian_kernel)
         normalizing_factor = np.sum(gaussian_kernel_2d) # Will flatten array
@@ -75,14 +79,61 @@ class MatchedFilter(object):
             for color in range(self.n_colors):
                 self.data_gaussian[:,:,color,datum] = signal.convolve2d(self.data[:,:,color,datum],gaussian_kernel_2d,mode='same')
 
-            img = Image.fromarray(np.uint8(self.data_gaussian[:,:,:,datum]*255.0),mode='HSV')
-            img = img.convert(mode='RGB')
-            img.save('convolution-{0}.jpg'.format(datum))
+            if debug:
+                img = Image.fromarray(np.uint8(self.data_gaussian[:,:,:,datum]*255.0),mode='HSV')
+                img = img.convert(mode='RGB')
+                img.save(os.path.join(debug_directory, 'gaussian_filtered-{0}.jpg'.format(datum)))
 
+        self.data = self.data_gaussian # Replace data with gaussian data
+
+    def calculate_gradient(self):
+        # Difference filter: [1, 0, -1]
+        # Average filter: [1, 2, 1]
+        # Calculate gradient as G = sqrt(Gx^2 + Gy^2) based on sobel operator, valid only
+        self.gradient = np.zeros((self.n_image_rows-2,self.n_image_cols-2,self.n_colors,self.n_data))
+        # Since we separate the convolution, 0:3 holds difference and 3:6 holds average for row convolution
+        self.row_convolution = np.zeros((self.n_image_rows,self.n_image_cols-2,2*self.n_colors,self.n_data))
+        # 0:3 holds Gx, 3:6 holds Gy for gradient components
+        self.gradient_components = np.zeros((self.n_image_rows-2,self.n_image_cols-2,2*self.n_colors,self.n_data))
+
+        # It's a convolution, so the filtering will actually be backward
+        for col in range(2, self.n_image_cols):
+            self.row_convolution[:,col-2,0:3,:] = self.data[:,col,:,:] - self.data[:,col-2,:,:]
+            self.row_convolution[:,col-2,3:6,:] = self.data[:,col,:,:] + 2*self.data[:,col-1,:,:] + self.data[:,col-2,:,:]
+
+        for row in range(2, self.n_image_rows):
+            self.gradient_components[row-2,:,0:3,:] = self.row_convolution[row,:,0:3,:] + 2*self.row_convolution[row-1,:,0:3,:] + self.row_convolution[row-2,:,0:3,:]
+            self.gradient_components[row-2,:,3:6,:] = self.row_convolution[row,:,3:6,:] - self.row_convolution[row-2,:,3:6,:]
+
+        # Combine the two directions
+        for row in range(0,self.n_image_rows-2):
+            for col in range(0,self.n_image_cols-2):
+                self.gradient[row,col,0,:] = np.sqrt(self.gradient_components[row,col,0,:]**2 + self.gradient_components[row,col,3,:]**2)
+                self.gradient[row,col,1,:] = np.sqrt(self.gradient_components[row,col,1,:]**2 + self.gradient_components[row,col,4,:]**2)
+                self.gradient[row,col,2,:] = np.sqrt(self.gradient_components[row,col,2,:]**2 + self.gradient_components[row,col,5,:]**2)
+
+        if debug:
+            for datum in range(self.n_data):
+                # Combined gradient
+                img = Image.fromarray(np.uint8(self.gradient[:,:,:,datum]*255.0),mode='HSV')
+                img = img.convert(mode='RGB')
+                img.save(os.path.join(debug_directory, 'gradient-{0}.jpg'.format(datum)))
+                # Gx
+                img = Image.fromarray(np.uint8(self.gradient_components[:,:,0:3,datum]*255.0),mode='HSV')
+                img = img.convert(mode='RGB')
+                img.save(os.path.join(debug_directory, 'gradient_x-{0}.jpg'.format(datum)))
+                # Gy
+                img = Image.fromarray(np.uint8(self.gradient_components[:,:,3:6,datum]*255.0),mode='HSV')
+                img = img.convert(mode='RGB')
+                img.save(os.path.join(debug_directory, 'gradient_y-{0}.jpg'.format(datum)))
+
+    def create_filters(self):
+        
 
 def main():
     obj = MatchedFilter(data_directory='filters/')
     obj.smooth_image()
+    obj.calculate_gradient()
 
 
 
